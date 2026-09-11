@@ -1,6 +1,8 @@
-import memeShock from "@/assets/meme-shock.jpg";
-import memeSmug from "@/assets/meme-smug.jpg";
-import memeDeadpan from "@/assets/meme-deadpan.jpg";
+import memeShock from "@/assets/meme-shock.jpg.asset.json";
+import memeSmug from "@/assets/meme-smug.jpg.asset.json";
+import memeGrin from "@/assets/meme-grin.jpg.asset.json";
+import memePolite from "@/assets/meme-polite.jpg.asset.json";
+import memeStare from "@/assets/meme-stare.jpg.asset.json";
 
 export type ReactionClass = {
   id: string;
@@ -15,22 +17,36 @@ export const REACTION_CLASSES: ReactionClass[] = [
     id: "shock",
     name: "Ocular Startle",
     code: "RC-02",
-    meme: memeShock,
+    meme: memeShock.url,
     caption: "Subject exhibits catastrophic surprise",
   },
   {
     id: "smug",
     name: "Elevated Self-Regard",
     code: "RC-07",
-    meme: memeSmug,
+    meme: memeSmug.url,
     caption: "Subject believes they have won",
   },
   {
-    id: "deadpan",
-    name: "Affect Flattening",
+    id: "grin",
+    name: "Maximal Dentition",
+    code: "RC-04",
+    meme: memeGrin.url,
+    caption: "Subject is delighted beyond protocol",
+  },
+  {
+    id: "polite",
+    name: "Courtesy Micro-Smile",
+    code: "RC-09",
+    meme: memePolite.url,
+    caption: "Subject is being polite about it",
+  },
+  {
+    id: "stare",
+    name: "Proximity Fixation",
     code: "RC-11",
-    meme: memeDeadpan,
-    caption: "Subject has left the building",
+    meme: memeStare.url,
+    caption: "Subject has moved too close to the lens",
   },
 ];
 
@@ -49,9 +65,16 @@ export function classify(stats: FrameStats, baseline: FrameStats) {
   const contrastDelta = stats.contrast - baseline.contrast;
 
   const scores = [
+    // shock — sudden motion + light shift
     0.3 + motionDelta * 5 + Math.abs(lumaDelta) * 2.2,
+    // smug — rising contrast, slight brightening
     0.3 + contrastDelta * 4 + lumaDelta * 1.6,
-    0.42 - motionDelta * 3.4 - Math.abs(contrastDelta) * 2,
+    // grin — bright + high motion energy
+    0.28 + lumaDelta * 3.2 + motionDelta * 2.4,
+    // polite — near-baseline everything
+    0.4 - Math.abs(motionDelta) * 2.6 - Math.abs(lumaDelta) * 2,
+    // stare — face fills frame: low motion, falling contrast
+    0.3 - contrastDelta * 3.6 - motionDelta * 1.8,
   ];
 
   let best = 0;
