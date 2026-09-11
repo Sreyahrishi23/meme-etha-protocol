@@ -30,7 +30,7 @@ export const Route = createFileRoute("/detect")({
       { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
-  component: Detect;
+  component: Detect,
 });
 
 function Detect() {
