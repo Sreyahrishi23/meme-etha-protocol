@@ -102,10 +102,10 @@ function Calibrate() {
               return (
                 <line
                   key={i}
-                  x1={160 + Math.cos(a) * r1}
-                  y1={160 + Math.sin(a) * r1}
-                  x2={160 + Math.cos(a) * r2}
-                  y2={160 + Math.sin(a) * r2}
+                  x1={(160 + Math.cos(a) * r1).toFixed(2)}
+                  y1={(160 + Math.sin(a) * r1).toFixed(2)}
+                  x2={(160 + Math.cos(a) * r2).toFixed(2)}
+                  y2={(160 + Math.sin(a) * r2).toFixed(2)}
                   stroke="var(--hairline)"
                   strokeWidth={long ? 1.2 : 0.6}
                   opacity={i / 72 <= progress ? 1 : 0.3}
