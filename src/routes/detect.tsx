@@ -172,10 +172,8 @@ function Detect() {
                 <img
                   src={reaction.meme}
                   alt={`Meme response for ${reaction.name}`}
-                  width={816}
-                  height={816}
                   loading="lazy"
-                  className="block w-full"
+                  className="block aspect-square w-full object-cover"
                 />
               </div>
               <p className="label-tech mt-2 text-right">
