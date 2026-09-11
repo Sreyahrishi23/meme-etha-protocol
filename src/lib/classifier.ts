@@ -55,12 +55,12 @@ export function classify(stats: FrameStats, baseline: FrameStats) {
   ];
 
   let best = 0;
-  for (let i = 1; i < scores.length; i++) if (scores[i] > scores[best]) best = i;
+  for (let i = 1; i < scores.length; i++) if (scores[i]! > scores[best]!) best = i;
 
   const total = scores.reduce((a, b) => a + Math.max(b, 0.01), 0);
-  const confidence = Math.min(0.985, Math.max(0.31, Math.max(scores[best], 0.01) / total));
+  const confidence = Math.min(0.985, Math.max(0.31, Math.max(scores[best]!, 0.01) / total));
 
-  return { reaction: REACTION_CLASSES[best], confidence };
+  return { reaction: REACTION_CLASSES[best]!, confidence };
 }
 
 export function readFrameStats(
@@ -79,11 +79,12 @@ export function readFrameStats(
   let n = 0;
 
   for (let i = 0; i < data.length; i += 4) {
-    const l = (data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114) / 255;
+    const l = (data[i]! * 0.299 + data[i + 1]! * 0.587 + data[i + 2]! * 0.114) / 255;
     sum += l;
     sumSq += l * l;
     if (previous) {
-      const p = (previous[i] * 0.299 + previous[i + 1] * 0.587 + previous[i + 2] * 0.114) / 255;
+      const p =
+        (previous[i]! * 0.299 + previous[i + 1]! * 0.587 + previous[i + 2]! * 0.114) / 255;
       motion += Math.abs(l - p);
     }
     n++;
