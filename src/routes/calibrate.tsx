@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import { Atmosphere } from "@/components/lab/atmosphere";
 import { LabFooter, LabHeader } from "@/components/lab/chrome";
 import { Annotation } from "@/components/lab/annotation";
+import { getFaceLandmarker, detectFrame } from "@/lib/detector";
+import { BaselineAccumulator, setBaseline } from "@/lib/calibration-store";
 
 export const Route = createFileRoute("/calibrate")({
   head: () => ({
@@ -37,7 +39,16 @@ function Calibrate() {
   useEffect(() => {
     let stream: MediaStream | null = null;
     let raf = 0;
+    let cancelled = false;
     const start = performance.now();
+    const accumulator = new BaselineAccumulator();
+    let landmarker: Awaited<ReturnType<typeof getFaceLandmarker>> | null = null;
+
+    getFaceLandmarker()
+      .then((lm) => {
+        if (!cancelled) landmarker = lm;
+      })
+      .catch(() => setError("Model failed to load — check your connection and retry."));
 
     navigator.mediaDevices
       ?.getUserMedia({ video: { facingMode: "user" }, audio: false })
@@ -53,20 +64,37 @@ function Calibrate() {
     const loop = () => {
       const p = Math.min(1, (performance.now() - start) / DURATION);
       setProgress(p);
-      setReadout({
-        sigma: 0.031 + Math.sin(performance.now() / 340) * 0.006 * (1 - p),
-        gain: 1.42 + Math.cos(performance.now() / 510) * 0.09 * (1 - p),
-        drift: (1 - p) * 0.83 + Math.sin(performance.now() / 200) * 0.02,
-      });
-      if (p < 1) raf = requestAnimationFrame(loop);
-      else
+
+      const video = videoRef.current;
+      if (landmarker && video && video.readyState >= 2) {
+        const frame = detectFrame(landmarker, video, performance.now());
+        if (frame) {
+          accumulator.add(frame);
+
+          const stats = accumulator.getRunningStats("jawOpen");
+          if (stats) {
+            setReadout({
+              sigma: stats.std,
+              gain: 1 + stats.mean,
+              drift: 1 - p,
+            });
+          }
+        }
+      }
+
+      if (p < 1) {
+        raf = requestAnimationFrame(loop);
+      } else {
+        setBaseline(accumulator.finalize());
         window.setTimeout(() => {
           void navigate({ to: "/detect" });
         }, 700);
+      }
     };
     raf = requestAnimationFrame(loop);
 
     return () => {
+      cancelled = true;
       cancelAnimationFrame(raf);
       stream?.getTracks().forEach((t) => t.stop());
     };
