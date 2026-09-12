@@ -78,13 +78,14 @@ function Detect() {
           smoothed = smoothed * 0.88 + c * 0.12;
           setConfidence(smoothed);
 
-          const jawB = baseline.jawOpen;
-          const smileB = baseline.mouthSmileLeft;
-          const browB = baseline.browInnerUp;
+          // z-score = (current blendshape value - neutral mean) / neutral std dev
+          const jawB = baseline["jawOpen"];
+          const smileB = baseline["mouthSmileLeft"];
+          const browB = baseline["browInnerUp"];
           setStats({
-            jaw: jawB ? ((frame.jawOpen ?? 0) - jawB.mean) / jawB.std : 0,
-            smile: smileB ? ((frame.mouthSmileLeft ?? 0) - smileB.mean) / smileB.std : 0,
-            brow: browB ? ((frame.browInnerUp ?? 0) - browB.mean) / browB.std : 0,
+            jaw: jawB ? ((frame["jawOpen"] ?? 0) - jawB.mean) / jawB.std : 0,
+            smile: smileB ? ((frame["mouthSmileLeft"] ?? 0) - smileB.mean) / smileB.std : 0,
+            brow: browB ? ((frame["browInnerUp"] ?? 0) - browB.mean) / browB.std : 0,
           });
 
           if (r.id !== lastId && smoothed > 0.45) {
