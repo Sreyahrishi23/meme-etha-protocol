@@ -84,11 +84,13 @@ function Calibrate() {
 
       if (p < 1) {
         raf = requestAnimationFrame(loop);
-      } else {
+      } else if (accumulator.count > 0) {
         setBaseline(accumulator.finalize());
         window.setTimeout(() => {
           void navigate({ to: "/detect" });
         }, 700);
+      } else {
+        setError("No face detected during the scan — face the camera in good light and retry.");
       }
     };
     raf = requestAnimationFrame(loop);
