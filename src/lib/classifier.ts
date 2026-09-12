@@ -3,6 +3,8 @@ import memeSmug from "@/assets/meme-smug.jpg.asset.json";
 import memeGrin from "@/assets/meme-grin.jpg.asset.json";
 import memePolite from "@/assets/meme-polite.jpg.asset.json";
 import memeStare from "@/assets/meme-stare.jpg.asset.json";
+import type { BlendshapeFrame } from "@/lib/detector";
+import type { Baseline } from "@/lib/calibration-store";
 
 export type ReactionClass = {
   id: string;
@@ -52,71 +54,35 @@ export const REACTION_CLASSES: ReactionClass[] = [
 
 export const CLASS_COUNT = 14;
 
-/** Rolling frame statistics used to derive a (deliberately absurd) classification. */
-export type FrameStats = {
-  luma: number;
-  motion: number;
-  contrast: number;
-};
+function zScore(frame: BlendshapeFrame, baseline: Baseline, key: string): number {
+  const b = baseline[key];
+  if (!b) return 0;
+  return ((frame[key] ?? 0) - b.mean) / b.std;
+}
 
-export function classify(stats: FrameStats, baseline: FrameStats) {
-  const motionDelta = stats.motion - baseline.motion;
-  const lumaDelta = stats.luma - baseline.luma;
-  const contrastDelta = stats.contrast - baseline.contrast;
+export function classify(frame: BlendshapeFrame, baseline: Baseline) {
+  const jawOpen = zScore(frame, baseline, "jawOpen");
+  const browUp = zScore(frame, baseline, "browInnerUp");
+  const smileL = zScore(frame, baseline, "mouthSmileLeft");
+  const smileR = zScore(frame, baseline, "mouthSmileRight");
+  const squintL = zScore(frame, baseline, "eyeSquintLeft");
+  const squintR = zScore(frame, baseline, "eyeSquintRight");
+  const cheekPuff = zScore(frame, baseline, "cheekPuff");
+  const mouthPress = zScore(frame, baseline, "mouthPressLeft");
 
   const scores = [
-    // shock — sudden motion + light shift
-    0.3 + motionDelta * 5 + Math.abs(lumaDelta) * 2.2,
-    // smug — rising contrast, slight brightening
-    0.3 + contrastDelta * 4 + lumaDelta * 1.6,
-    // grin — bright + high motion energy
-    0.28 + lumaDelta * 3.2 + motionDelta * 2.4,
-    // polite — near-baseline everything
-    0.4 - Math.abs(motionDelta) * 2.6 - Math.abs(lumaDelta) * 2,
-    // stare — face fills frame: low motion, falling contrast
-    0.3 - contrastDelta * 3.6 - motionDelta * 1.8,
+    jawOpen * 1.4 + Math.abs(browUp) * 0.6,
+    mouthPress * 1.2 + browUp * 0.8 - jawOpen * 0.5,
+    (smileL + smileR) * 1.1 + cheekPuff * 0.4,
+    0.5 - Math.abs(smileL - smileR) * 0.6 - jawOpen * 0.3,
+    (squintL + squintR) * 1.3 - jawOpen * 0.4,
   ];
 
   let best = 0;
   for (let i = 1; i < scores.length; i++) if (scores[i]! > scores[best]!) best = i;
 
   const total = scores.reduce((a, b) => a + Math.max(b, 0.01), 0);
-  const confidence = Math.min(0.985, Math.max(0.31, Math.max(scores[best]!, 0.01) / total));
+  const confidence = Math.min(0.985, Math.max(0.05, Math.max(scores[best]!, 0.01) / total));
 
   return { reaction: REACTION_CLASSES[best]!, confidence };
-}
-
-export function readFrameStats(
-  ctx: CanvasRenderingContext2D,
-  video: HTMLVideoElement,
-  previous: Uint8ClampedArray | null,
-): { stats: FrameStats; frame: Uint8ClampedArray } {
-  const w = ctx.canvas.width;
-  const h = ctx.canvas.height;
-  ctx.drawImage(video, 0, 0, w, h);
-  const data = ctx.getImageData(0, 0, w, h).data;
-
-  let sum = 0;
-  let sumSq = 0;
-  let motion = 0;
-  let n = 0;
-
-  for (let i = 0; i < data.length; i += 4) {
-    const l = (data[i]! * 0.299 + data[i + 1]! * 0.587 + data[i + 2]! * 0.114) / 255;
-    sum += l;
-    sumSq += l * l;
-    if (previous) {
-      const p =
-        (previous[i]! * 0.299 + previous[i + 1]! * 0.587 + previous[i + 2]! * 0.114) / 255;
-      motion += Math.abs(l - p);
-    }
-    n++;
-  }
-
-  const luma = sum / n;
-  const contrast = Math.sqrt(Math.max(sumSq / n - luma * luma, 0));
-  return {
-    stats: { luma, contrast, motion: previous ? motion / n : 0 },
-    frame: data,
-  };
 }
