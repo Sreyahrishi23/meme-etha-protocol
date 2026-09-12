@@ -3,14 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { Atmosphere } from "@/components/lab/atmosphere";
 import { LabFooter, LabHeader } from "@/components/lab/chrome";
 import { Annotation } from "@/components/lab/annotation";
-import {
-  CLASS_COUNT,
-  REACTION_CLASSES,
-  classify,
-  readFrameStats,
-  type FrameStats,
-  type ReactionClass,
-} from "@/lib/classifier";
+import { CLASS_COUNT, REACTION_CLASSES, classify, type ReactionClass } from "@/lib/classifier";
+import { getFaceLandmarker, detectFrame } from "@/lib/detector";
+import { getBaseline } from "@/lib/calibration-store";
 
 export const Route = createFileRoute("/detect")({
   head: () => ({
@@ -33,26 +28,35 @@ export const Route = createFileRoute("/detect")({
   component: Detect,
 });
 
+type DebugStats = { jaw: number; smile: number; brow: number };
+
 function Detect() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [reaction, setReaction] = useState<ReactionClass>(REACTION_CLASSES[0]!);
   const [confidence, setConfidence] = useState(0.42);
-  const [stats, setStats] = useState<FrameStats>({ luma: 0, motion: 0, contrast: 0 });
+  const [stats, setStats] = useState<DebugStats>({ jaw: 0, smile: 0, brow: 0 });
   const [memeVisible, setMemeVisible] = useState(false);
 
   useEffect(() => {
+    const baseline = getBaseline();
+    if (!baseline) {
+      setError("No calibration found — recalibrate before running live detection.");
+      return;
+    }
+
     let stream: MediaStream | null = null;
     let raf = 0;
-    let prev: Uint8ClampedArray | null = null;
-    let baseline: FrameStats | null = null;
+    let cancelled = false;
     let smoothed = 0.4;
     let lastId = REACTION_CLASSES[0]!.id;
+    let landmarker: Awaited<ReturnType<typeof getFaceLandmarker>> | null = null;
 
-    const canvas = document.createElement("canvas");
-    canvas.width = 64;
-    canvas.height = 48;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    getFaceLandmarker()
+      .then((lm) => {
+        if (!cancelled) landmarker = lm;
+      })
+      .catch(() => setError("Model failed to load — check your connection and retry."));
 
     navigator.mediaDevices
       ?.getUserMedia({ video: { facingMode: "user", width: 1280 }, audio: false })
@@ -67,30 +71,35 @@ function Detect() {
 
     const loop = () => {
       const video = videoRef.current;
-      if (ctx && video && video.readyState >= 2) {
-        const { stats: s, frame } = readFrameStats(ctx, video, prev);
-        prev = frame;
-        if (!baseline) baseline = s;
-        baseline = {
-          luma: baseline.luma * 0.99 + s.luma * 0.01,
-          motion: baseline.motion * 0.985 + s.motion * 0.015,
-          contrast: baseline.contrast * 0.99 + s.contrast * 0.01,
-        };
-        const { reaction: r, confidence: c } = classify(s, baseline);
-        smoothed = smoothed * 0.88 + c * 0.12;
-        setStats(s);
-        setConfidence(smoothed);
-        if (r.id !== lastId && smoothed > 0.45) {
-          lastId = r.id;
-          setReaction(r);
+      if (landmarker && video && video.readyState >= 2) {
+        const frame = detectFrame(landmarker, video, performance.now());
+        if (frame) {
+          const { reaction: r, confidence: c } = classify(frame, baseline);
+          smoothed = smoothed * 0.88 + c * 0.12;
+          setConfidence(smoothed);
+
+          const jawB = baseline.jawOpen;
+          const smileB = baseline.mouthSmileLeft;
+          const browB = baseline.browInnerUp;
+          setStats({
+            jaw: jawB ? ((frame.jawOpen ?? 0) - jawB.mean) / jawB.std : 0,
+            smile: smileB ? ((frame.mouthSmileLeft ?? 0) - smileB.mean) / smileB.std : 0,
+            brow: browB ? ((frame.browInnerUp ?? 0) - browB.mean) / browB.std : 0,
+          });
+
+          if (r.id !== lastId && smoothed > 0.45) {
+            lastId = r.id;
+            setReaction(r);
+          }
+          setMemeVisible(smoothed > 0.55);
         }
-        setMemeVisible(smoothed > 0.55);
       }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
 
     return () => {
+      cancelled = true;
       cancelAnimationFrame(raf);
       stream?.getTracks().forEach((t) => t.stop());
     };
@@ -122,7 +131,6 @@ function Detect() {
               />
             )}
 
-            {/* specimen reticle */}
             <div className="pointer-events-none absolute inset-0">
               <div className="absolute top-[16%] left-1/2 h-[62%] w-[34%] -translate-x-1/2 border border-[color-mix(in_oklab,var(--iris-teal)_45%,transparent)]">
                 <Corner className="-top-px -left-px" />
@@ -144,19 +152,18 @@ function Detect() {
               </div>
               <div className="absolute bottom-[12%] left-[8%] hidden sm:block">
                 <Annotation
-                  label="Micro-motion"
-                  value={stats.motion.toFixed(4)}
+                  label="Jaw deviation (σ)"
+                  value={stats.jaw.toFixed(2)}
                   lineLength="4.5rem"
                 />
               </div>
 
               <span className="label-tech absolute top-4 left-4">Fig. 02 — live specimen</span>
               <span className="readout absolute right-4 bottom-4 text-[0.65rem] text-muted-foreground">
-                L {stats.luma.toFixed(3)} · C {stats.contrast.toFixed(3)}
+                Smile σ {stats.smile.toFixed(2)} · Brow σ {stats.brow.toFixed(2)}
               </span>
             </div>
 
-            {/* meme response */}
             <div
               className={`pointer-events-none absolute right-5 bottom-5 w-40 transition-all duration-500 sm:w-56 ${
                 memeVisible ? "translate-y-0 scale-100 opacity-100" : "translate-y-4 scale-95 opacity-0"
