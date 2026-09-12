@@ -40,11 +40,16 @@ export function detectFrame(
   video: HTMLVideoElement,
   timestampMs: number
 ): BlendshapeFrame | null {
-  const result = landmarker.detectForVideo(video, timestampMs);
-  const shapes = result.faceBlendshapes?.[0]?.categories;
-  if (!shapes) return null;
+  try {
+    const result = landmarker.detectForVideo(video, timestampMs);
+    const shapes = result.faceBlendshapes?.[0]?.categories;
+    if (!shapes) return null;
 
-  const frame: BlendshapeFrame = {};
-  for (const s of shapes) frame[s.categoryName] = s.score;
-  return frame;
+    const frame: BlendshapeFrame = {};
+    for (const s of shapes) frame[s.categoryName] = s.score;
+    return frame;
+  } catch {
+    // A single bad frame (e.g. video not ready yet) must never crash the loop.
+    return null;
+  }
 }
